@@ -10,6 +10,7 @@ interface CircularTimer2Props {
 	strokeColor: string;
 	onComplete?: () => void;
 	showRemainingTime?: boolean;
+	overtimeStrokeColor?: string;
 }
 
 export default function CircularTimer2({
@@ -19,7 +20,8 @@ export default function CircularTimer2({
 	strokeColor,
 	onComplete,
 	showRemainingTime = true,
-}: Omit<CircularTimer2Props, "isPlaying">) {
+	overtimeStrokeColor = "tomato",
+}: Omit<CircularTimer2Props, "isPlaying"> & { overtimeStrokeColor?: string }) {
 	const radius = (size - strokeWidth) / 2;
 	const circumference = 2 * Math.PI * radius;
 	const center = size / 2;
@@ -27,23 +29,28 @@ export default function CircularTimer2({
 	const [remainingTime, setRemainingTime] = useState(duration);
 	const [offset, setOffset] = useState(0);
 	const [isPlaying, setIsPlaying] = useState(false);
+	const [isOvertime, setIsOvertime] = useState(false);
+	const [overtimeOffset, setOvertimeOffset] = useState(circumference);
 	const intervalRef = useRef<NodeJS.Timeout | null>(null);
 	const initialDuration = useRef(duration);
 
-	const formatTime = (seconds: number, overtime = false): string => {
-		const totalSeconds = Math.floor(seconds);
+	const formatTime = (seconds: number): string => {
+		const displaySeconds = Math.abs(seconds);
+		const totalSeconds = Math.floor(displaySeconds);
 		const minutes = Math.floor(totalSeconds / 60);
 		const remainingSeconds = totalSeconds % 60;
 
 		const formattedTime = `${minutes < 10 ? "0" : ""}${minutes}:${remainingSeconds < 10 ? "0" : ""}${remainingSeconds}`;
 
-		return overtime ? `+${formattedTime}` : formattedTime;
+		return isOvertime ? `+${formattedTime}` : formattedTime;
 	};
 
 	const handlePlayPause = () => {
 		if (remainingTime <= 0 && !isPlaying) {
 			setRemainingTime(duration);
 			setOffset(0);
+			setIsOvertime(false);
+			setOvertimeOffset(circumference);
 			initialDuration.current = duration;
 		}
 		setIsPlaying((prev) => !prev);
@@ -53,6 +60,8 @@ export default function CircularTimer2({
 		setIsPlaying(false);
 		setRemainingTime(duration);
 		setOffset(0);
+		setIsOvertime(false);
+		setOvertimeOffset(circumference);
 		if (intervalRef.current) {
 			clearInterval(intervalRef.current);
 			intervalRef.current = null;
@@ -71,30 +80,31 @@ export default function CircularTimer2({
 		if (!intervalRef.current) {
 			intervalRef.current = setInterval(() => {
 				setRemainingTime((prev) => {
-					if (prev <= 1) {
-						if (intervalRef.current) {
-							clearInterval(intervalRef.current);
-							intervalRef.current = null;
+					const nextTime = prev - 1;
+
+					if (nextTime <= 0) {
+						onComplete?.();
+						if (!isOvertime) {
+							setIsOvertime(true);
+							setOffset(0);
 						}
 
-						setOffset(0);
-						setIsPlaying(false);
-
-						setTimeout(() => {
-							onComplete?.();
-						}, 0);
-
-						return 0;
+						const overtimeDuration = initialDuration.current || 60;
+						const overtimeElapsed = Math.abs(nextTime);
+						const overtimeRatio = Math.min(
+							1,
+							overtimeElapsed / overtimeDuration,
+						);
+						setOvertimeOffset(circumference * (1 - overtimeRatio));
+					} else {
+						const currentRatio = Math.max(
+							0,
+							nextTime / initialDuration.current,
+						);
+						setOffset(circumference * (1 - currentRatio));
 					}
 
-					const currentRatio = Math.max(
-						0,
-						(prev - 1) / initialDuration.current,
-					);
-					const nextOffset = circumference * (1 - currentRatio);
-					setOffset(nextOffset);
-
-					return prev - 1;
+					return nextTime;
 				});
 			}, 1000);
 		}
@@ -105,15 +115,17 @@ export default function CircularTimer2({
 				intervalRef.current = null;
 			}
 		};
-	}, [isPlaying, circumference, onComplete]);
+	}, [isPlaying, circumference, onComplete, isOvertime]);
 
 	useEffect(() => {
 		if (!isPlaying) {
 			setRemainingTime(duration);
 			setOffset(0);
+			setIsOvertime(false);
+			setOvertimeOffset(circumference);
 			initialDuration.current = duration;
 		}
-	}, [duration, isPlaying]);
+	}, [duration, isPlaying, circumference]);
 
 	return (
 		<View style={styles.wrapper}>
@@ -139,6 +151,19 @@ export default function CircularTimer2({
 							strokeDashoffset={offset}
 							strokeLinecap="round"
 						/>
+						{isOvertime && (
+							<Circle
+								cx={center}
+								cy={center}
+								r={radius}
+								stroke={overtimeStrokeColor}
+								strokeWidth={strokeWidth}
+								fill="none"
+								strokeDasharray={circumference}
+								strokeDashoffset={overtimeOffset}
+								strokeLinecap="round"
+							/>
+						)}
 					</G>
 				</Svg>
 				{showRemainingTime && (
