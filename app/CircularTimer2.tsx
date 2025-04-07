@@ -27,7 +27,7 @@ export default function CircularTimer2({
 	const center = size / 2;
 
 	const [remainingTime, setRemainingTime] = useState(duration);
-	const [offset, setOffset] = useState(1);
+	const [offset, setOffset] = useState(0); // 초기 offset을 0으로 설정
 	const intervalRef = useRef<NodeJS.Timeout | null>(null);
 	const initialDuration = useRef(duration);
 
@@ -51,7 +51,21 @@ export default function CircularTimer2({
 	};
 
 	useEffect(() => {
-		if (!isPlaying) return;
+		if (!isPlaying) {
+			// 타이머가 멈췄을 때 인터벌 정리
+			if (intervalRef.current) {
+				clearInterval(intervalRef.current);
+				intervalRef.current = null;
+			}
+			return;
+		}
+
+		// 타이머 시작 시 또는 duration 변경 시 초기화
+		if (remainingTime <= 0 && duration > 0) {
+			setRemainingTime(duration);
+			setOffset(0);
+			initialDuration.current = duration; // duration 변경 시 initialDuration 업데이트
+		}
 
 		if (remainingTime > 0) {
 			intervalRef.current = setInterval(() => {
@@ -64,6 +78,8 @@ export default function CircularTimer2({
 							intervalRef.current = null;
 						}
 
+						setOffset(0); // 원 애니메이션 초기화 (offset을 0으로 설정)
+
 						// 완료 콜백 호출 (다음 렌더링 사이클에서 처리)
 						setTimeout(() => {
 							onComplete?.();
@@ -73,21 +89,43 @@ export default function CircularTimer2({
 					}
 
 					// 일반적인 타이머 업데이트
-					const ratio = (prev - 1) / initialDuration.current;
-					const o = circumference * (1 - ratio);
-					setOffset(o);
+					// remainingTime이 initialDuration.current보다 클 경우 ratio가 1 이상이 되어 offset이 음수가 될 수 있으므로 max(0, ...) 추가
+					const currentRatio = Math.max(
+						0,
+						(prev - 1) / initialDuration.current,
+					);
+					const nextOffset = circumference * (1 - currentRatio);
+					setOffset(nextOffset);
 
 					return prev - 1;
 				});
 			}, 1000);
-			return () => {
-				if (intervalRef.current) {
-					clearInterval(intervalRef.current);
-					intervalRef.current = null;
-				}
-			};
+		} else {
+			// duration이 0이거나 음수일 때 처리
+			setOffset(0); // 원을 채운 상태로 시작
+			setTimeout(() => {
+				onComplete?.();
+			}, 0);
 		}
-	}, [isPlaying, remainingTime, circumference, onComplete]);
+
+		// Cleanup 함수: 컴포넌트 언마운트 시 또는 useEffect 재실행 전에 인터벌 정리
+		return () => {
+			if (intervalRef.current) {
+				clearInterval(intervalRef.current);
+				intervalRef.current = null;
+			}
+		};
+		// isPlaying, remainingTime, circumference, onComplete, duration을 의존성 배열에 추가
+	}, [isPlaying, remainingTime, circumference, onComplete, duration]);
+
+	// duration prop이 변경되었을 때 타이머 상태 업데이트
+	useEffect(() => {
+		if (!isPlaying) {
+			setRemainingTime(duration);
+			setOffset(0);
+			initialDuration.current = duration;
+		}
+	}, [duration, isPlaying]);
 
 	return (
 		<View style={styles.container}>
@@ -126,21 +164,16 @@ export default function CircularTimer2({
 // 스타일 정의
 const styles = StyleSheet.create({
 	container: {
-		position: "relative",
 		alignItems: "center",
 		justifyContent: "center",
 	},
 	timeContainer: {
-		position: "absolute",
+		...StyleSheet.absoluteFillObject,
 		alignItems: "center",
 		justifyContent: "center",
 	},
 	timeText: {
-		fontSize: 20,
+		fontSize: 24,
 		fontWeight: "bold",
-		color: "#333",
-	},
-	overtimeText: {
-		color: "#FF5722", // 초과 시간일 때 텍스트 색상 변경
 	},
 });
