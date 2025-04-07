@@ -43,7 +43,6 @@ export default function Index() {
 				size={300}
 				strokeWidth={20}
 				strokeColor="red"
-				isPlaying={isPlaying}
 				onComplete={() => {
 					console.log("Timer completed");
 					setIsPlaying(false);
